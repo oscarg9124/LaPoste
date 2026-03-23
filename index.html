@@ -1,433 +1,241 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lucie's Mail Quest</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; background: #1a1025; font-family: 'Courier New', monospace;
+    padding: 12px;
+  }
+  h1 {
+    color: #f5e6c8; font-size: 18px; margin-bottom: 6px;
+    letter-spacing: 3px; text-transform: uppercase; text-align: center;
+  }
+  p.hint {
+    color: #a09080; font-size: 11px; margin-bottom: 10px; text-align: center;
+  }
+  canvas {
+    border: 3px solid #3a2a50; border-radius: 6px;
+    image-rendering: pixelated; max-width: 100%; background: #000;
+  }
+  .controls { margin-top: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .controls .row { display: flex; gap: 2px; }
+  .controls button {
+    width: 48px; height: 48px; font-size: 18px;
+    background: #2a1a3a; color: #f5e6c8; border: 2px solid #3a2a50;
+    border-radius: 8px; cursor: pointer; touch-action: manipulation;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .controls button:active { background: #3a2a50; }
+</style>
+</head>
+<body>
 
-const TILE = 32;
-const COLS = 16;
-const ROWS = 13;
-const W = COLS * TILE;
-const H = ROWS * TILE;
+<h1>🇫🇷 Lucie's Mail Quest 📬</h1>
+<p class="hint">Arrow keys / WASD to move · Find the bag · Deliver to La Poste</p>
+<canvas id="game" width="512" height="416"></canvas>
+<div class="controls">
+  <button onclick="move(0,-1)">▲</button>
+  <div class="row">
+    <button onclick="move(-1,0)">◀</button>
+    <button onclick="move(0,1)">▼</button>
+    <button onclick="move(1,0)">▶</button>
+  </div>
+</div>
 
-const COLORS = {
-  grass: "#5a8f3c",
-  grassAlt: "#4e7d34",
-  path: "#d4b896",
-  pathEdge: "#c4a87e",
-  water: "#3b7dd8",
-  waterLight: "#5a9be6",
-  building: "#c9a06c",
-  roof: "#8b3a3a",
-  roofPost: "#2b4c8c",
-  door: "#5a3420",
-  window: "#87ceeb",
-  windowFrame: "#5a3420",
-  tree: "#2d6b1e",
-  treeTrunk: "#6b4226",
-  flower1: "#e84393",
-  flower2: "#fdcb6e",
-  flower3: "#a29bfe",
-  bag: "#8b6914",
-  bagStrap: "#a07828",
-  postBox: "#cc2200",
-  postBoxTop: "#991a00",
-  sign: "#f5e6c8",
-};
+<script>
+const TILE = 32, COLS = 16, ROWS = 13, W = COLS * TILE, H = ROWS * TILE;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-// Map: 0=grass, 1=path, 2=water, 3=tree, 4=flower, 5=oscar_house, 6=post_office, 7=bag_spot, 8=fence
 const MAP = [
-  [3, 3, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 3, 3],
-  [3, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 3],
-  [0, 0, 5, 5, 5, 0, 0, 1, 1, 0, 6, 6, 6, 6, 0, 0],
-  [0, 0, 5, 5, 5, 0, 0, 1, 1, 0, 6, 6, 6, 6, 0, 0],
-  [0, 4, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 4, 0],
-  [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-  [0, 0, 0, 0, 0, 4, 0, 1, 1, 0, 4, 0, 0, 0, 0, 0],
-  [0, 3, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 7, 0, 3, 0],
-  [0, 0, 0, 4, 0, 0, 0, 1, 1, 0, 0, 4, 0, 0, 0, 0],
-  [2, 2, 0, 0, 0, 3, 0, 1, 1, 0, 3, 0, 0, 0, 2, 2],
-  [2, 2, 2, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 2, 2, 2],
-  [2, 2, 2, 2, 0, 0, 1, 1, 1, 1, 0, 0, 2, 2, 2, 2],
-  [2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2],
+  [3,3,0,0,0,0,0,3,3,0,0,0,0,0,3,3],
+  [3,0,0,4,0,0,0,0,0,0,0,4,0,0,0,3],
+  [0,0,5,5,5,0,0,1,1,0,6,6,6,6,0,0],
+  [0,0,5,5,5,0,0,1,1,0,6,6,6,6,0,0],
+  [0,4,0,1,0,0,0,1,1,0,0,0,1,0,4,0],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],
+  [0,0,0,0,0,4,0,1,1,0,4,0,0,0,0,0],
+  [0,3,0,0,0,0,0,1,1,0,0,0,7,0,3,0],
+  [0,0,0,4,0,0,0,1,1,0,0,4,0,0,0,0],
+  [2,2,0,0,0,3,0,1,1,0,3,0,0,0,2,2],
+  [2,2,2,0,0,0,0,1,1,0,0,0,0,2,2,2],
+  [2,2,2,2,0,0,1,1,1,1,0,0,2,2,2,2],
+  [2,2,2,2,2,0,0,0,0,0,0,2,2,2,2,2],
 ];
 
-const WALKABLE = new Set([0, 1, 4, 7]);
+const WALKABLE = new Set([0,1,4,7]);
+function walkable(c,r){ return c>=0&&c<COLS&&r>=0&&r<ROWS&&WALKABLE.has(MAP[r][c]); }
+function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(Math.floor(x),Math.floor(y),Math.floor(w),Math.floor(h)); }
 
-function isWalkable(col, row) {
-  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-  return WALKABLE.has(MAP[row][col]);
+const state = { px:7, py:11, frame:0, hasBag:false, delivered:false, dialog:'start', dialogTimer:240, t:0, keys:{} };
+
+const DIALOGS = {
+  start: ["Bonjour! I'm Lucie. Oscar left his bag behind!","I need to pick it up and mail it at La Poste!"],
+  pickupBag: ["Got it! Oscar's bag is safe with me.","Now I need to get to La Poste up north!"],
+  atPost: ["Merci, Lucie! The bag is on its way to Oscar!","He'll be so happy. Au revoir!"],
+};
+
+function move(dx,dy){
+  if(state.delivered) return;
+  const nx=state.px+dx, ny=state.py+dy;
+  if(!walkable(nx,ny)) return;
+  state.px=nx; state.py=ny; state.frame++;
+  if(!state.hasBag && MAP[ny][nx]===7){ state.hasBag=true; state.dialog='pickupBag'; state.dialogTimer=200; }
+  if(state.hasBag && ny===4 && nx>=10 && nx<=13){ state.delivered=true; state.dialog='atPost'; state.dialogTimer=999; }
 }
 
-// Draw pixel art helpers
-function drawPixelRect(ctx, x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+window.addEventListener('keydown', e=>{
+  state.keys[e.key.toLowerCase()]=true; e.preventDefault();
+});
+window.addEventListener('keyup', e=>{ state.keys[e.key.toLowerCase()]=false; });
+
+function drawTree(c,r){
+  const x=c*TILE, y=r*TILE;
+  rect(x+13,y+18,6,14,'#6b4226');
+  rect(x+4,y+2,24,10,'#2d6b1e');
+  rect(x+8,y+0,16,6,'#3a8a28');
+  rect(x+2,y+8,28,12,'#2d6b1e');
 }
 
-function drawLucie(ctx, x, y, dir, frame, hasBag) {
-  const px = x * TILE;
-  const py = y * TILE;
-  // Beret
-  drawPixelRect(ctx, px + 8, py + 2, 18, 6, "#222");
-  drawPixelRect(ctx, px + 10, py + 0, 10, 4, "#222");
-  // Face
-  drawPixelRect(ctx, px + 10, py + 7, 14, 12, "#f5d0a9");
-  // Eyes
-  drawPixelRect(ctx, px + 12, py + 11, 3, 3, "#2c3e50");
-  drawPixelRect(ctx, px + 19, py + 11, 3, 3, "#2c3e50");
-  // Smile
-  drawPixelRect(ctx, px + 14, py + 16, 6, 2, "#c0392b");
-  // Hair
-  drawPixelRect(ctx, px + 8, py + 7, 3, 14, "#4a2c0a");
-  drawPixelRect(ctx, px + 23, py + 7, 3, 14, "#4a2c0a");
-  // Body (striped shirt - très français!)
-  const bodyY = py + 20;
-  for (let i = 0; i < 4; i++) {
-    drawPixelRect(ctx, px + 8, bodyY + i * 2, 18, 2, i % 2 === 0 ? "#fff" : "#e74c3c");
-  }
-  // Skirt
-  drawPixelRect(ctx, px + 6, py + 28, 22, 4, "#2c3e50");
-  // Legs animation
-  const legOff = Math.sin(frame * 0.3) * 2;
-  drawPixelRect(ctx, px + 10, py + 31, 4, 2, "#f5d0a9");
-  drawPixelRect(ctx, px + 20, py + 31, 4, 2, "#f5d0a9");
-  
-  // Bag on back
-  if (hasBag) {
-    drawPixelRect(ctx, px + 24, py + 18, 6, 10, COLORS.bag);
-    drawPixelRect(ctx, px + 25, py + 16, 4, 3, COLORS.bagStrap);
-  }
+function drawFlower(c,r,t){
+  const x=c*TILE+16, y=r*TILE+20;
+  const colors=['#e84393','#fdcb6e','#a29bfe'];
+  const col=colors[(c*3+r*7)%3];
+  rect(x-1,y+4,2,8,'#2d6b1e');
+  const sw=Math.sin(t*0.02+c+r);
+  rect(x-4+sw,y-2,8,8,col);
+  rect(x-2+sw,y,4,4,'#f9e56e');
 }
 
-function drawTree(ctx, col, row) {
-  const x = col * TILE;
-  const y = row * TILE;
-  drawPixelRect(ctx, x + 13, y + 18, 6, 14, COLORS.treeTrunk);
-  drawPixelRect(ctx, x + 4, y + 2, 24, 10, COLORS.tree);
-  drawPixelRect(ctx, x + 8, y + 0, 16, 6, "#3a8a28");
-  drawPixelRect(ctx, x + 2, y + 8, 28, 12, COLORS.tree);
-}
-
-function drawFlower(ctx, col, row, t) {
-  const x = col * TILE + 16;
-  const y = row * TILE + 20;
-  const colors = [COLORS.flower1, COLORS.flower2, COLORS.flower3];
-  const c = colors[(col * 3 + row * 7) % 3];
-  drawPixelRect(ctx, x - 1, y + 4, 2, 8, "#2d6b1e");
-  const sway = Math.sin(t * 0.02 + col + row) * 1;
-  drawPixelRect(ctx, x - 4 + sway, y - 2, 8, 8, c);
-  drawPixelRect(ctx, x - 2 + sway, y, 4, 4, "#f9e56e");
-}
-
-function drawWater(ctx, col, row, t) {
-  const x = col * TILE;
-  const y = row * TILE;
-  drawPixelRect(ctx, x, y, TILE, TILE, COLORS.water);
-  const shimmer = Math.sin(t * 0.03 + col * 2 + row) * 0.5 + 0.5;
-  if (shimmer > 0.6) {
-    drawPixelRect(ctx, x + 4 + ((t * 0.5 + col * 8) % 20), y + 8 + ((row * 6) % 16), 8, 2, COLORS.waterLight);
+function drawWater(c,r,t){
+  const x=c*TILE, y=r*TILE;
+  rect(x,y,TILE,TILE,'#3b7dd8');
+  if(Math.sin(t*0.03+c*2+r)>0.1){
+    rect(x+4+((t*0.5+c*8)%20), y+8+((r*6)%16), 8, 2, '#5a9be6');
   }
 }
 
-function drawHouse(ctx, startCol, startRow, isPostOffice) {
-  const x = startCol * TILE;
-  const y = startRow * TILE;
-  const w = isPostOffice ? 4 * TILE : 3 * TILE;
-  const h = 2 * TILE;
-  // Walls
-  drawPixelRect(ctx, x + 2, y + 10, w - 4, h + 8, isPostOffice ? "#e8dcc8" : COLORS.building);
-  // Roof
-  const roofColor = isPostOffice ? COLORS.roofPost : COLORS.roof;
-  for (let i = 0; i < 14; i++) {
-    drawPixelRect(ctx, x - 4 + i * 1.5, y + 10 - i * 0.8, w + 8 - i * 3, 3, roofColor);
-  }
-  drawPixelRect(ctx, x - 2, y + 6, w + 4, 8, roofColor);
-  // Door
-  const doorX = x + (w / 2) - 6;
-  drawPixelRect(ctx, doorX, y + h - 2, 12, 18, COLORS.door);
-  drawPixelRect(ctx, doorX + 8, y + h + 6, 2, 2, "#d4a020");
-  // Windows
-  if (isPostOffice) {
-    drawPixelRect(ctx, x + 10, y + 16, 12, 10, COLORS.window);
-    drawPixelRect(ctx, x + 9, y + 15, 14, 2, COLORS.windowFrame);
-    drawPixelRect(ctx, x + w - 22, y + 16, 12, 10, COLORS.window);
-    drawPixelRect(ctx, x + w - 23, y + 15, 14, 2, COLORS.windowFrame);
-    // Sign
-    drawPixelRect(ctx, x + w / 2 - 20, y + 2, 40, 10, COLORS.sign);
-    // "LA POSTE" text
-    ctx.fillStyle = "#2b4c8c";
-    ctx.font = "bold 7px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("LA POSTE", x + w / 2, y + 10);
-    // Post box
-    drawPixelRect(ctx, x + w + 4, y + h + 6, 10, 14, COLORS.postBox);
-    drawPixelRect(ctx, x + w + 2, y + h + 4, 14, 4, COLORS.postBoxTop);
-    drawPixelRect(ctx, x + w + 5, y + h + 10, 8, 2, "#ffcc00");
+function drawHouse(sc,sr,isPost){
+  const x=sc*TILE, y=sr*TILE;
+  const w=isPost?4*TILE:3*TILE, h=2*TILE;
+  rect(x+2,y+10,w-4,h+8,isPost?'#e8dcc8':'#c9a06c');
+  const rc=isPost?'#2b4c8c':'#8b3a3a';
+  for(let i=0;i<14;i++) rect(x-4+i*1.5,y+10-i*0.8,w+8-i*3,3,rc);
+  rect(x-2,y+6,w+4,8,rc);
+  const dx=x+(w/2)-6;
+  rect(dx,y+h-2,12,18,'#5a3420');
+  rect(dx+8,y+h+6,2,2,'#d4a020');
+  if(isPost){
+    rect(x+10,y+16,12,10,'#87ceeb'); rect(x+9,y+15,14,2,'#5a3420');
+    rect(x+w-22,y+16,12,10,'#87ceeb'); rect(x+w-23,y+15,14,2,'#5a3420');
+    rect(x+w/2-20,y+2,40,10,'#f5e6c8');
+    ctx.fillStyle='#2b4c8c'; ctx.font='bold 7px monospace'; ctx.textAlign='center';
+    ctx.fillText('LA POSTE',x+w/2,y+10);
+    rect(x+w+4,y+h+6,10,14,'#cc2200');
+    rect(x+w+2,y+h+4,14,4,'#991a00');
+    rect(x+w+5,y+h+10,8,2,'#ffcc00');
   } else {
-    drawPixelRect(ctx, x + 8, y + 16, 10, 8, COLORS.window);
-    drawPixelRect(ctx, x + 7, y + 15, 12, 2, COLORS.windowFrame);
-    drawPixelRect(ctx, x + 12, y + 16, 2, 8, COLORS.windowFrame);
-    // Sign
-    ctx.fillStyle = "#5a3420";
-    ctx.font = "bold 6px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("OSCAR", x + w / 2, y + 4);
+    rect(x+8,y+16,10,8,'#87ceeb'); rect(x+7,y+15,12,2,'#5a3420');
+    rect(x+12,y+16,2,8,'#5a3420');
+    ctx.fillStyle='#5a3420'; ctx.font='bold 6px monospace'; ctx.textAlign='center';
+    ctx.fillText('OSCAR',x+w/2,y+4);
   }
 }
 
-function drawBag(ctx, col, row, t) {
-  const x = col * TILE + 8;
-  const y = row * TILE + 8;
-  const bob = Math.sin(t * 0.05) * 1.5;
-  // Shadow
-  drawPixelRect(ctx, x - 1, y + 16, 18, 4, "rgba(0,0,0,0.15)");
-  // Bag body
-  drawPixelRect(ctx, x, y + bob, 16, 16, COLORS.bag);
-  drawPixelRect(ctx, x + 2, y + 2 + bob, 12, 2, COLORS.bagStrap);
-  // Buckle
-  drawPixelRect(ctx, x + 6, y + 6 + bob, 4, 4, "#d4a020");
-  // Sparkle
-  if (Math.sin(t * 0.08) > 0.7) {
-    drawPixelRect(ctx, x + 14, y - 2 + bob, 3, 3, "#fff");
-    drawPixelRect(ctx, x + 15, y - 3 + bob, 1, 5, "#fff");
-    drawPixelRect(ctx, x + 13, y - 1 + bob, 5, 1, "#fff");
+function drawBag(c,r,t){
+  const x=c*TILE+8, y=r*TILE+8, bob=Math.sin(t*0.05)*1.5;
+  rect(x-1,y+16,18,4,'rgba(0,0,0,0.15)');
+  rect(x,y+bob,16,16,'#8b6914');
+  rect(x+2,y+2+bob,12,2,'#a07828');
+  rect(x+6,y+6+bob,4,4,'#d4a020');
+  if(Math.sin(t*0.08)>0.7){
+    rect(x+14,y-2+bob,3,3,'#fff');
+    rect(x+15,y-3+bob,1,5,'#fff');
+    rect(x+13,y-1+bob,5,1,'#fff');
   }
 }
 
-const DIALOGUES = {
-  start: "Bonjour! I'm Lucie. Oscar left his bag behind!\nI need to pick it up and mail it at La Poste!",
-  pickupBag: "Got it! Oscar's bag is safe with me.\nNow I need to get to La Poste up north!",
-  atPost: "Merci, Lucie! The bag is on its way to Oscar!\nHe'll be so happy. Au revoir!",
-  hint: "Use arrow keys or WASD to walk around.\nFind the bag (south-east) and bring it to La Poste!",
-};
+function drawLucie(px,py,frame,hasBag){
+  const x=px*TILE, y=py*TILE;
+  rect(x+8,y+2,18,6,'#222'); rect(x+10,y+0,10,4,'#222');
+  rect(x+10,y+7,14,12,'#f5d0a9');
+  rect(x+12,y+11,3,3,'#2c3e50'); rect(x+19,y+11,3,3,'#2c3e50');
+  rect(x+14,y+16,6,2,'#c0392b');
+  rect(x+8,y+7,3,14,'#4a2c0a'); rect(x+23,y+7,3,14,'#4a2c0a');
+  for(let i=0;i<4;i++) rect(x+8,y+20+i*2,18,2,i%2===0?'#fff':'#e74c3c');
+  rect(x+6,y+28,22,4,'#2c3e50');
+  rect(x+10,y+31,4,2,'#f5d0a9'); rect(x+20,y+31,4,2,'#f5d0a9');
+  if(hasBag){ rect(x+24,y+18,6,10,'#8b6914'); rect(x+25,y+16,4,3,'#a07828'); }
+}
 
-export default function PixelGame() {
-  const canvasRef = useRef(null);
-  const stateRef = useRef({
-    px: 7, py: 11,
-    dir: 0,
-    frame: 0,
-    hasBag: false,
-    delivered: false,
-    dialog: "start",
-    dialogTimer: 240,
-    t: 0,
-    moving: false,
-    keys: {},
-  });
-  const animRef = useRef(null);
-  const [, forceRender] = useState(0);
+let moveDelay=0;
+function loop(){
+  const s=state; s.t++;
+  moveDelay++;
+  if(moveDelay>=8){
+    const k=s.keys;
+    if(k['arrowup']||k['w']){move(0,-1);moveDelay=0;}
+    else if(k['arrowdown']||k['s']){move(0,1);moveDelay=0;}
+    else if(k['arrowleft']||k['a']){move(-1,0);moveDelay=0;}
+    else if(k['arrowright']||k['d']){move(1,0);moveDelay=0;}
+  }
+  if(s.dialogTimer>0) s.dialogTimer--;
 
-  const movePlayer = useCallback((dx, dy) => {
-    const s = stateRef.current;
-    if (s.delivered) return;
-    const nx = s.px + dx;
-    const ny = s.py + dy;
-    if (isWalkable(nx, ny)) {
-      s.px = nx;
-      s.py = ny;
-      s.frame++;
-      // Check bag pickup
-      if (!s.hasBag && MAP[ny][nx] === 7) {
-        s.hasBag = true;
-        s.dialog = "pickupBag";
-        s.dialogTimer = 200;
-      }
-      // Check post office delivery (row 4, cols 10-13 in front of post office)
-      if (s.hasBag && ny === 4 && nx >= 10 && nx <= 13) {
-        s.delivered = true;
-        s.dialog = "atPost";
-        s.dialogTimer = 999;
-      }
+  // Draw grass
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const tile=MAP[r][c];
+    if(tile===2){ drawWater(c,r,s.t); continue; }
+    rect(c*TILE,r*TILE,TILE,TILE,(c+r)%2===0?'#4e7d34':'#5a8f3c');
+    if(tile===1){ rect(c*TILE,r*TILE,TILE,TILE,'#d4b896'); rect(c*TILE,r*TILE,TILE,1,'#c4a87e'); }
+  }
+
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    if(MAP[r][c]===4) drawFlower(c,r,s.t);
+    if(MAP[r][c]===3) drawTree(c,r);
+  }
+
+  drawHouse(2,2,false);
+  drawHouse(10,2,true);
+  if(!s.hasBag) drawBag(12,7,s.t);
+  drawLucie(s.px,s.py,s.frame,s.hasBag);
+
+  // Dialog
+  if(s.dialogTimer>0 && s.dialog){
+    const lines=DIALOGS[s.dialog];
+    const boxH=44, boxY=H-boxH-8;
+    ctx.fillStyle='rgba(20,10,40,0.88)';
+    ctx.beginPath(); ctx.roundRect(16,boxY,W-32,boxH,6); ctx.fill();
+    ctx.strokeStyle='#f5e6c8'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.roundRect(16,boxY,W-32,boxH,6); ctx.stroke();
+    ctx.fillStyle='#f5e6c8'; ctx.font='11px monospace'; ctx.textAlign='left';
+    lines.forEach((l,i)=>ctx.fillText(l,28,boxY+18+i*16));
+  }
+
+  // Win confetti
+  if(s.delivered){
+    ctx.fillStyle='rgba(20,10,40,0.3)'; ctx.fillRect(0,0,W,H);
+    const cc=['#e74c3c','#3498db','#f1c40f','#2ecc71','#e84393','#fff'];
+    for(let i=0;i<30;i++){
+      const cx=(Math.sin(i*47+s.t*0.02)*0.5+0.5)*W;
+      const cy=((i*37+s.t*1.5)%(H+40))-20;
+      ctx.fillStyle=cc[i%cc.length]; ctx.fillRect(cx,cy,4,6);
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    const handleKey = (e) => {
-      const s = stateRef.current;
-      s.keys[e.key.toLowerCase()] = e.type === "keydown";
-      e.preventDefault();
-    };
-    window.addEventListener("keydown", handleKey);
-    window.addEventListener("keyup", handleKey);
-    return () => {
-      window.removeEventListener("keydown", handleKey);
-      window.removeEventListener("keyup", handleKey);
-    };
-  }, []);
+  // HUD
+  ctx.fillStyle='rgba(20,10,40,0.65)';
+  ctx.beginPath(); ctx.roundRect(8,4,s.hasBag?110:128,22,4); ctx.fill();
+  ctx.fillStyle='#f5e6c8'; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+  ctx.fillText(s.hasBag?(s.delivered?'✉️ DELIVERED!':'📦 Go to La Poste!'):'🔍 Find Oscar\'s bag',16,18);
 
-  useEffect(() => {
-    let moveDelay = 0;
-    const loop = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      const s = stateRef.current;
-      s.t++;
-
-      // Handle movement
-      moveDelay++;
-      if (moveDelay >= 8) {
-        const k = s.keys;
-        if (k["arrowup"] || k["w"]) { movePlayer(0, -1); moveDelay = 0; }
-        else if (k["arrowdown"] || k["s"]) { movePlayer(0, 1); moveDelay = 0; }
-        else if (k["arrowleft"] || k["a"]) { movePlayer(-1, 0); moveDelay = 0; }
-        else if (k["arrowright"] || k["d"]) { movePlayer(1, 0); moveDelay = 0; }
-      }
-
-      if (s.dialogTimer > 0) s.dialogTimer--;
-
-      // Clear
-      ctx.fillStyle = COLORS.grass;
-      ctx.fillRect(0, 0, W, H);
-
-      // Draw map
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          const tile = MAP[r][c];
-          const tx = c * TILE;
-          const ty = r * TILE;
-          if (tile === 0 || tile === 4 || tile === 7) {
-            // Grass variation
-            if ((c + r) % 2 === 0) {
-              drawPixelRect(ctx, tx, ty, TILE, TILE, COLORS.grassAlt);
-            }
-          } else if (tile === 1) {
-            drawPixelRect(ctx, tx, ty, TILE, TILE, COLORS.path);
-            drawPixelRect(ctx, tx, ty, TILE, 1, COLORS.pathEdge);
-          } else if (tile === 2) {
-            drawWater(ctx, c, r, s.t);
-          }
-        }
-      }
-
-      // Flowers
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          if (MAP[r][c] === 4) drawFlower(ctx, c, r, s.t);
-        }
-      }
-
-      // Trees
-      for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-          if (MAP[r][c] === 3) drawTree(ctx, c, r);
-        }
-      }
-
-      // Buildings
-      drawHouse(ctx, 2, 2, false);
-      drawHouse(ctx, 10, 2, true);
-
-      // Bag (only if not picked up)
-      if (!s.hasBag) {
-        drawBag(ctx, 12, 7, s.t);
-      }
-
-      // Player
-      drawLucie(ctx, s.px, s.py, s.dir, s.frame, s.hasBag);
-
-      // Dialog box
-      if (s.dialogTimer > 0 && s.dialog) {
-        const text = DIALOGUES[s.dialog];
-        const lines = text.split("\n");
-        const boxH = 44;
-        const boxY = H - boxH - 8;
-        // Box
-        ctx.fillStyle = "rgba(20,10,40,0.88)";
-        ctx.beginPath();
-        ctx.roundRect(16, boxY, W - 32, boxH, 6);
-        ctx.fill();
-        ctx.strokeStyle = "#f5e6c8";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(16, boxY, W - 32, boxH, 6);
-        ctx.stroke();
-        // Text
-        ctx.fillStyle = "#f5e6c8";
-        ctx.font = "11px monospace";
-        ctx.textAlign = "left";
-        lines.forEach((line, i) => {
-          ctx.fillText(line, 28, boxY + 18 + i * 16);
-        });
-      }
-
-      // Delivered overlay
-      if (s.delivered) {
-        ctx.fillStyle = "rgba(20,10,40,0.3)";
-        ctx.fillRect(0, 0, W, H);
-        // Confetti
-        for (let i = 0; i < 30; i++) {
-          const cx = (Math.sin(i * 47 + s.t * 0.02) * 0.5 + 0.5) * W;
-          const cy = ((i * 37 + s.t * 1.5) % (H + 40)) - 20;
-          const confettiColors = ["#e74c3c", "#3498db", "#f1c40f", "#2ecc71", "#e84393", "#fff"];
-          ctx.fillStyle = confettiColors[i % confettiColors.length];
-          ctx.fillRect(cx, cy, 4, 6);
-        }
-      }
-
-      // HUD
-      ctx.fillStyle = "rgba(20,10,40,0.65)";
-      ctx.beginPath();
-      ctx.roundRect(8, 4, s.hasBag ? 110 : 128, 22, 4);
-      ctx.fill();
-      ctx.fillStyle = "#f5e6c8";
-      ctx.font = "bold 10px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText(s.hasBag ? (s.delivered ? "✉️ DELIVERED!" : "📦 Go to La Poste!") : "🔍 Find Oscar's bag", 16, 18);
-
-      animRef.current = requestAnimationFrame(loop);
-    };
-    animRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [movePlayer]);
-
-  // Touch controls
-  const handleTouch = (dx, dy) => {
-    movePlayer(dx, dy);
-  };
-
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      minHeight: "100vh", background: "#1a1025", fontFamily: "'Courier New', monospace",
-      padding: "12px", boxSizing: "border-box",
-    }}>
-      <h1 style={{
-        color: "#f5e6c8", fontSize: "18px", margin: "0 0 6px 0",
-        letterSpacing: "3px", textTransform: "uppercase", textAlign: "center",
-      }}>
-        🇫🇷 Lucie's Mail Quest 📬
-      </h1>
-      <p style={{ color: "#a09080", fontSize: "11px", margin: "0 0 10px 0", textAlign: "center" }}>
-        Arrow keys / WASD to move · Find the bag · Deliver to La Poste
-      </p>
-      <canvas
-        ref={canvasRef}
-        width={W}
-        height={H}
-        style={{
-          border: "3px solid #3a2a50",
-          borderRadius: "6px",
-          imageRendering: "pixelated",
-          maxWidth: "100%",
-          background: "#000",
-        }}
-      />
-      {/* Mobile touch controls */}
-      <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-        <button onClick={() => handleTouch(0, -1)} style={btnStyle}>▲</button>
-        <div style={{ display: "flex", gap: "2px" }}>
-          <button onClick={() => handleTouch(-1, 0)} style={btnStyle}>◀</button>
-          <button onClick={() => handleTouch(0, 1)} style={btnStyle}>▼</button>
-          <button onClick={() => handleTouch(1, 0)} style={btnStyle}>▶</button>
-        </div>
-      </div>
-    </div>
-  );
+  requestAnimationFrame(loop);
 }
-
-const btnStyle = {
-  width: "48px", height: "48px", fontSize: "18px",
-  background: "#2a1a3a", color: "#f5e6c8", border: "2px solid #3a2a50",
-  borderRadius: "8px", cursor: "pointer", display: "flex",
-  alignItems: "center", justifyContent: "center", userSelect: "none",
-  touchAction: "manipulation",
-};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
